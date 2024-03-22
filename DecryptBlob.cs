@@ -20,20 +20,20 @@ namespace Company.Function
             log.LogInformation($"C# Blob trigger function Processed blob\n Name:{name} \n Size: {myBlob.Length} Bytes");
             
             string keyVaultName = Environment.GetEnvironmentVariable("keyVaultName");
-            string storageAccountName = Environment.GetEnvironmentVariable("destinationstorageAccountName");
+            string stagingstorageAccountName = Environment.GetEnvironmentVariable("stagingstorageAccountName");
             string privateKey = Environment.GetEnvironmentVariable("privateKeyName");
             string privateKeyPassPhrase =Environment.GetEnvironmentVariable("passPhraseKeyName");
-            string containerName =  Environment.GetEnvironmentVariable("destinationContainer");
-            string decryptFolder =  Environment.GetEnvironmentVariable("decryptFolder");
+            string stagingContainer =  Environment.GetEnvironmentVariable("stagingContainer");
+            string decryptContainer =  Environment.GetEnvironmentVariable("decryptContainer");
             
 
             try {
                 var kvUri = "https://" + keyVaultName + ".vault.azure.net";
                 var client = new SecretClient(new Uri(kvUri), new DefaultAzureCredential());
                 
-                var blobServiceClient = new BlobServiceClient(new Uri($"https://{storageAccountName}.blob.core.windows.net"), new DefaultAzureCredential());
+                var blobServiceClient = new BlobServiceClient(new Uri($"https://{stagingstorageAccountName}.blob.core.windows.net"), new DefaultAzureCredential());
 
-                var DestblobServiceClient = new BlobServiceClient(new Uri($"https://{storageAccountName}.blob.core.windows.net"), new DefaultAzureCredential());
+                var DestblobServiceClient = new BlobServiceClient(new Uri($"https://{stagingstorageAccountName}.blob.core.windows.net"), new DefaultAzureCredential());
 
                 var privateKeysecretValue = await client.GetSecretAsync(privateKey);
                 string keyContent = privateKeysecretValue.Value.Value;
@@ -41,11 +41,23 @@ namespace Company.Function
                 var passphraseSecretValue = await client.GetSecretAsync(privateKeyPassPhrase);
                 string pphrase = passphraseSecretValue.Value.Value;
 
-                BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(containerName);
-                BlobContainerClient outcontainerClient = DestblobServiceClient.GetBlobContainerClient(containerName);
+                BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(stagingContainer);
+                BlobContainerClient outcontainerClient = DestblobServiceClient.GetBlobContainerClient(decryptContainer);
+
+                bool containerExists = await outcontainerClient.ExistsAsync();
+
+                if (!containerExists)
+                {
+                    await outcontainerClient.CreateAsync();
+                    log.LogInformation("Container created successfully.");
+                }
+                else
+                {
+                    log.LogInformation("Container already exists.");
+                }
                 
                 BlobClient InblobClient = containerClient.GetBlobClient(name);
-                BlobClient outblobClient = outcontainerClient.GetBlobClient(decryptFolder + "/"+ name);
+                BlobClient outblobClient = outcontainerClient.GetBlobClient(name);
                 
                 var propertiesResponse = InblobClient.GetProperties();
                 var inputString = "";
@@ -68,7 +80,7 @@ namespace Company.Function
 
                         Stream decryptedData = await DecryptAsync(inputStream, privateKeyEncoded, pphrase, log);
                         outblobClient.Upload(decryptedData, overwrite: true);  
-                        log.LogInformation($"File Decrypted Successfully {decryptFolder + "/"+ name}");     
+                        log.LogInformation($"File Decrypted Successfully {name}");     
 
                     }
                 else

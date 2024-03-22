@@ -10,6 +10,8 @@ using Azure.Identity;
 using Azure.Storage.Sas;
 using Azure;
 using Azure.Storage.Blobs.Specialized;
+using Azure.Communication.Email;
+using Azure.Messaging;
 
 
 namespace Company.Function
@@ -25,8 +27,9 @@ namespace Company.Function
             string Container_List = Environment.GetEnvironmentVariable("ContainerList").Replace(",","\",\"");
             string storageAccountName = Environment.GetEnvironmentVariable("storageAccountName");
             string emptyContainer = Environment.GetEnvironmentVariable("emptyContainer");
-            string destinationstorageAccountName = Environment.GetEnvironmentVariable("destinationstorageAccountName");
-            string destinationContainer = Environment.GetEnvironmentVariable("destinationContainer");
+            string stagingstorageAccountName = Environment.GetEnvironmentVariable("stagingstorageAccountName");
+            string stagingContainer = Environment.GetEnvironmentVariable("stagingContainer");
+            string EmailConnection = Environment.GetEnvironmentVariable("EmailConnection");
 
             BlobServiceClient blobServiceClient =  null;
             BlobServiceClient outblobServiceClient =  null;
@@ -42,12 +45,12 @@ namespace Company.Function
             
             try
             {
-                outblobServiceClient = new BlobServiceClient(new Uri($"https://{destinationstorageAccountName}.blob.core.windows.net"), new DefaultAzureCredential());
+                outblobServiceClient = new BlobServiceClient(new Uri($"https://{stagingstorageAccountName}.blob.core.windows.net"), new DefaultAzureCredential());
                 
             }
             catch(Exception ex)
             {
-                log.LogError($"Error While Connection to Storage Account {destinationstorageAccountName}  {ex.Message}");
+                log.LogError($"Error While Connection to Storage Account {stagingstorageAccountName}  {ex.Message}");
             }
 
             var containerList = new List<string>() {Container_List};
@@ -75,6 +78,7 @@ namespace Company.Function
             
             foreach (var blobInfo in blobList)
                 {
+                    bool isEmpty = false;
 
                     if ( blobInfo.Item3 < currentTime )
                     {
@@ -87,6 +91,7 @@ namespace Company.Function
 
                         if(blobInfo.Item4 == 0)
                         {
+                            isEmpty = true;
                             string message = "The input stream is empty, make sure the file contains data";
                             log.LogError(message);
                             
@@ -107,9 +112,11 @@ namespace Company.Function
 
                             await blobClient.DeleteIfExistsAsync();
                             log.LogInformation("Deleted the file");
+
+                            sendEmailtoUser(EmailConnection,blobInfo.Item2,isEmpty,blobInfo.Item1);
                         }
                         else{
-                            BlobContainerClient destcontainer = outblobServiceClient.GetBlobContainerClient(destinationContainer);
+                            BlobContainerClient destcontainer = outblobServiceClient.GetBlobContainerClient(stagingContainer);
                             BlobClient destBlobClient = destcontainer.GetBlobClient(blobInfo.Item2);
                             
                             bool containerExists = await destcontainer.ExistsAsync();
@@ -128,6 +135,8 @@ namespace Company.Function
                             log.LogInformation("Copied the file to destination/staging container");
                             await blobClient.DeleteIfExistsAsync();
                             log.LogInformation("Deleted the file");
+
+                            sendEmailtoUser(EmailConnection,blobInfo.Item2,isEmpty,blobInfo.Item1);
                         }
                     }
         }
@@ -202,6 +211,31 @@ namespace Company.Function
                     
                 }
                 
+            }
+            private static void sendEmailtoUser(string EmailConnection , string blobName,bool isEmpty, string containerName )
+            {
+                string fromEmail = Environment.GetEnvironmentVariable("fromEmail");
+                string toEmail = Environment.GetEnvironmentVariable("toEmail");
+                
+                var emailClient = new EmailClient(EmailConnection);
+                string plainTextContent = "";
+                if(isEmpty)
+                {
+                    plainTextContent = $"{blobName} is Empty and moved to container Name {containerName}.\n\nThis is an automatically generated email – please do not reply to it. If you have any queries please email {fromEmail}";
+                }
+                else
+                {
+                    plainTextContent = $"{blobName} is moved to container Name {containerName}. \n\nThis is an automatically generated email – please do not reply to it. If you have any queries please email {fromEmail}";
+                }
+
+                EmailSendOperation emailSendOperation = emailClient.Send(
+                    WaitUntil.Completed,
+                    senderAddress: fromEmail,
+                    recipientAddress: toEmail,
+                    subject: "File Moved From Landing to Staging Area",
+                    htmlContent: "",
+                    plainTextContent: plainTextContent);
+
             }
         
     }
