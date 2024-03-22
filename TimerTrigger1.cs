@@ -113,7 +113,7 @@ namespace Company.Function
                             await blobClient.DeleteIfExistsAsync();
                             log.LogInformation("Deleted the file");
 
-                            sendEmailtoUser(EmailConnection,blobInfo.Item2,isEmpty,blobInfo.Item1);
+                            sendEmailtoUser(EmailConnection,blobInfo.Item2,isEmpty,emptyContainer);
                         }
                         else{
                             BlobContainerClient destcontainer = outblobServiceClient.GetBlobContainerClient(stagingContainer);
@@ -136,7 +136,7 @@ namespace Company.Function
                             await blobClient.DeleteIfExistsAsync();
                             log.LogInformation("Deleted the file");
 
-                            sendEmailtoUser(EmailConnection,blobInfo.Item2,isEmpty,blobInfo.Item1);
+                            sendEmailtoUser(EmailConnection,blobInfo.Item2,isEmpty,stagingContainer);
                         }
                     }
         }
