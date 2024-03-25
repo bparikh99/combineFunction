@@ -19,7 +19,7 @@ namespace Company.Function
     public class TimerTrigger1
     {
         [FunctionName("TimerTrigger1")]
-        public static async Task  Run([TimerTrigger("0 */1 * * * *")]TimerInfo myTimer, ILogger log)
+        public static async Task  Run([TimerTrigger("0 */5 * * * *")]TimerInfo myTimer, ILogger log)
         {
             log.LogInformation($"C# Timer trigger function executed at: {DateTime.Now}");
 
@@ -107,12 +107,8 @@ namespace Company.Function
                                 log.LogInformation("Container already exists.");
                             }
                             var copyOp = await emptyBlobClient.StartCopyFromUriAsync(blobClient.Uri);
-                            await copyOp.WaitForCompletionAsync();
-                            log.LogInformation("Copied the file to empty container");
-
-                            await blobClient.DeleteIfExistsAsync();
-                            log.LogInformation("Deleted the file");
-
+                            await UploadCompleted(blobClient, emptyBlobClient, log);
+            
                             sendEmailtoUser(EmailConnection,blobInfo.Item2,isEmpty,emptyContainer);
                         }
                         else{
@@ -132,9 +128,7 @@ namespace Company.Function
                             }
 
                             await CopyAcrossStorageAccountsAsync(blobClient,destBlobClient,log);
-                            log.LogInformation("Copied the file to destination/staging container");
-                            await blobClient.DeleteIfExistsAsync();
-                            log.LogInformation("Deleted the file");
+                            await UploadCompleted(blobClient, destBlobClient, log);
 
                             sendEmailtoUser(EmailConnection,blobInfo.Item2,isEmpty,stagingContainer);
                         }
@@ -158,12 +152,12 @@ namespace Company.Function
                     }
 
                     CopyFromUriOperation copyOperation = await destinationBlob.StartCopyFromUriAsync(sourceBlobSASURI);
-                    await copyOperation.WaitForCompletionAsync();
+                    // await copyOperation.WaitForCompletionAsync();
                 }
                 catch (RequestFailedException ex)
                 {
                     // Handle the 
-                    log.LogError($"Error While doint copy operation for Non empty files {sourceBlob.Uri}");
+                    log.LogError($"Error While doint copy operation for Non empty files {sourceBlob.Uri} {ex.Message}");
                     
                 }
                 finally
@@ -237,6 +231,33 @@ namespace Company.Function
                     plainTextContent: plainTextContent);
 
             }
-        
+
+            private static async Task UploadCompleted(BlobClient blobClient , BlobClient destBlobClient, ILogger log) 
+            {
+                bool isBlobCopiedSuccessfully = false;
+
+                do
+                {
+                    log.LogInformation("Checking copy status....");
+                    var targetBlobProperties = await destBlobClient.GetPropertiesAsync();
+                    log.LogInformation($"Current copy status = {targetBlobProperties.Value.CopyStatus}");
+                    if (targetBlobProperties.Value.CopyStatus.Equals(CopyStatus.Pending))
+                    {
+                        System.Threading.Thread.Sleep(1000);
+                    }
+                    else
+                    {
+                        isBlobCopiedSuccessfully = targetBlobProperties.Value.CopyStatus.Equals(CopyStatus.Success);
+                        break;
+                }
+                } while (true);
+
+                if (isBlobCopiedSuccessfully)
+                {
+                    log.LogInformation("Blob copied successfully. Now deleting source blob...");
+                    await blobClient.DeleteAsync();
+                }
+            }
+             
     }
 }
