@@ -97,7 +97,13 @@ namespace Company.Function
                             await outblobClient.UploadAsync(memoryStream, true);
                         }
                     }
-                
+                bool checkExists = await outblobClient.ExistsAsync();
+                if(checkExists)
+                {
+                    log.LogInformation("File Uploaded completed");
+                    await InblobClient.DeleteAsync();
+                    log.LogInformation("File Deleted Successfully from staging container");
+                }
             }
             catch (Exception ex)
             {
