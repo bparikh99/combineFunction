@@ -26,7 +26,7 @@ namespace Company.Function
             DateTime currentTime = DateTime.Now;
             string Container_List = Environment.GetEnvironmentVariable("ContainerList").Replace(",","\",\"");
             string storageAccountName = Environment.GetEnvironmentVariable("storageAccountName");
-            string emptyContainer = Environment.GetEnvironmentVariable("emptyContainer");
+            string decryptContainer =  Environment.GetEnvironmentVariable("decryptContainer");
             string stagingstorageAccountName = Environment.GetEnvironmentVariable("stagingstorageAccountName");
             string stagingContainer = Environment.GetEnvironmentVariable("stagingContainer");
             string EmailConnection = Environment.GetEnvironmentVariable("EmailConnection");
@@ -86,30 +86,31 @@ namespace Company.Function
                         BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(blobInfo.Item1);
                         BlobClient blobClient = containerClient.GetBlobClient(blobInfo.Item2);
 
-                        BlobContainerClient emptycontainer = blobServiceClient.GetBlobContainerClient(emptyContainer);
-                        BlobClient emptyBlobClient = emptycontainer.GetBlobClient(blobInfo.Item2);
-
                         if(blobInfo.Item4 == 0)
                         {
                             isEmpty = true;
                             string message = "The input stream is empty, make sure the file contains data";
                             log.LogError(message);
-                            
-                            bool containerExists = await emptycontainer.ExistsAsync();
+
+                            BlobContainerClient decryptcontainer = outblobServiceClient.GetBlobContainerClient(decryptContainer);
+                            BlobClient decryptBlobClient = decryptcontainer.GetBlobClient(blobInfo.Item2);
+
+                            bool containerExists = await decryptcontainer.ExistsAsync();
 
                             if (!containerExists)
                             {
-                                await emptycontainer.CreateAsync();
+                                await decryptcontainer.CreateAsync();
                                 log.LogInformation("Container created successfully.");
                             }
                             else
                             {
                                 log.LogInformation("Container already exists.");
                             }
-                            var copyOp = await emptyBlobClient.StartCopyFromUriAsync(blobClient.Uri);
-                            await UploadCompleted(blobClient, emptyBlobClient, log);
+                            
+                            await CopyAcrossStorageAccountsAsync(blobClient,decryptBlobClient,log);
+                            await UploadCompleted(blobClient, decryptBlobClient, log);
             
-                            sendEmailtoUser(EmailConnection,blobInfo.Item2,isEmpty,emptyContainer);
+                            sendEmailtoUser(EmailConnection,blobInfo.Item2,isEmpty,decryptContainer);
                         }
                         else{
                             BlobContainerClient destcontainer = outblobServiceClient.GetBlobContainerClient(stagingContainer);
