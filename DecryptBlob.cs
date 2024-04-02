@@ -67,8 +67,10 @@ namespace Company.Function
                     inputString = reader.ReadToEnd();
                 }
 
+               if(myBlob.Length != 0)
+               {
 
-                if (IsEncrypted(inputString))
+                    if (IsEncrypted(inputString))
                     {
                         log.LogInformation("Validation for The file is encrypted is passed!");
 
@@ -83,31 +85,37 @@ namespace Company.Function
                         log.LogInformation($"File Decrypted Successfully {name}");     
 
                     }
-                else
-                    {
-                        log.LogInformation("The file is not encrypted. Copying as it is to the destination folder.");
-
-                        BlobDownloadInfo blobDownloadInfo = await InblobClient.DownloadAsync();
-
-                        using (MemoryStream memoryStream = new MemoryStream())
+                    else
                         {
-                            await blobDownloadInfo.Content.CopyToAsync(memoryStream);
-                            memoryStream.Position = 0;
+                            log.LogInformation("The file is not encrypted. Copying as it is to the destination folder.");
 
-                            await outblobClient.UploadAsync(memoryStream, true);
+                            BlobDownloadInfo blobDownloadInfo = await InblobClient.DownloadAsync();
+
+                            using (MemoryStream memoryStream = new MemoryStream())
+                            {
+                                await blobDownloadInfo.Content.CopyToAsync(memoryStream);
+                                memoryStream.Position = 0;
+
+                                await outblobClient.UploadAsync(memoryStream, true);
+                            }
                         }
+                    bool checkExists = await outblobClient.ExistsAsync();
+                    if(checkExists)
+                    {
+                        log.LogInformation("File Uploaded completed");
+                        await InblobClient.DeleteAsync();
+                        log.LogInformation("File Deleted Successfully from staging container");
                     }
-                bool checkExists = await outblobClient.ExistsAsync();
-                if(checkExists)
-                {
-                    log.LogInformation("File Uploaded completed");
-                    await InblobClient.DeleteAsync();
-                    log.LogInformation("File Deleted Successfully from staging container");
-                }
+               }
+               else
+               {
+                    log.LogError($"Input Stream data is empty Blob Data will not be processed {name}");
+
+               }
+                
             }
             catch (Exception ex)
             {
-
                 log.LogError(ex, "There is an error occurred");
                
             }
