@@ -23,7 +23,7 @@ namespace Company.Function
         {
             log.LogInformation($"C# Timer trigger function executed at: {DateTime.Now}");
 
-            DateTime currentTime = DateTime.Now;
+            DateTime currentTime = DateTime.UtcNow;
             string Container_List = Environment.GetEnvironmentVariable("ContainerList").Replace(",","\",\"");
             string storageAccountName = Environment.GetEnvironmentVariable("storageAccountName");
             string stagingstorageAccountName = Environment.GetEnvironmentVariable("stagingstorageAccountName");
@@ -68,7 +68,7 @@ namespace Company.Function
                         {
                             BlobProperties properties = await containerClient.GetBlobClient(blob.Name).GetPropertiesAsync();
                             blobList.Add((container.Name, blob.Name, properties.LastModified,properties.ContentLength));
-                            log.LogInformation($"Blob: {blob.Name}, Last Modified: {properties.LastModified}, COntentLength: {properties.ContentLength}");
+                            log.LogInformation($"Blob: {blob.Name}, Last Modified: {properties.LastModified}, ContentLength: {properties.ContentLength}");
                                         
                         }
                     }

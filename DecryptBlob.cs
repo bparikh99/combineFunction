@@ -28,90 +28,93 @@ namespace Company.Function
             
 
             try {
-                var kvUri = "https://" + keyVaultName + ".vault.azure.net";
-                var client = new SecretClient(new Uri(kvUri), new DefaultAzureCredential());
-                
-                var blobServiceClient = new BlobServiceClient(new Uri($"https://{stagingstorageAccountName}.blob.core.windows.net"), new DefaultAzureCredential());
-
-                var DestblobServiceClient = new BlobServiceClient(new Uri($"https://{stagingstorageAccountName}.blob.core.windows.net"), new DefaultAzureCredential());
-
-                var privateKeysecretValue = await client.GetSecretAsync(privateKey);
-                string keyContent = privateKeysecretValue.Value.Value;
-
-                var passphraseSecretValue = await client.GetSecretAsync(privateKeyPassPhrase);
-                string pphrase = passphraseSecretValue.Value.Value;
-
-                BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(stagingContainer);
-                BlobContainerClient outcontainerClient = DestblobServiceClient.GetBlobContainerClient(decryptContainer);
-
-                bool containerExists = await outcontainerClient.ExistsAsync();
-
-                if (!containerExists)
-                {
-                    await outcontainerClient.CreateAsync();
-                    log.LogInformation("Container created successfully.");
-                }
-                else
-                {
-                    log.LogInformation("Container already exists.");
-                }
-                
-                BlobClient InblobClient = containerClient.GetBlobClient(name);
-                BlobClient outblobClient = outcontainerClient.GetBlobClient(name);
-                
-                var propertiesResponse = InblobClient.GetProperties();
-                var inputString = "";
-              
-                using (StreamReader reader = new StreamReader(myBlob))
-                {
-                    inputString = reader.ReadToEnd();
-                }
-
-               if(myBlob.Length != 0)
-               {
-
-                    if (IsEncrypted(inputString))
+                    if(myBlob.Length != 0)
                     {
-                        log.LogInformation("Validation for The file is encrypted is passed!");
+                
+                        var kvUri = "https://" + keyVaultName + ".vault.azure.net";
+                        var client = new SecretClient(new Uri(kvUri), new DefaultAzureCredential());
+                        
+                        var blobServiceClient = new BlobServiceClient(new Uri($"https://{stagingstorageAccountName}.blob.core.windows.net"), new DefaultAzureCredential());
 
-                        Stream inputStream = GenerateStreamFromString(inputString);
+                        var DestblobServiceClient = new BlobServiceClient(new Uri($"https://{stagingstorageAccountName}.blob.core.windows.net"), new DefaultAzureCredential());
 
-            
-                        byte[] privateKeyBytes = Convert.FromBase64String(keyContent);
-                        string privateKeyEncoded = Encoding.UTF8.GetString(privateKeyBytes);
+                        var privateKeysecretValue = await client.GetSecretAsync(privateKey);
+                        string keyContent = privateKeysecretValue.Value.Value;
 
-                        Stream decryptedData = await DecryptAsync(inputStream, privateKeyEncoded, pphrase, log);
-                        outblobClient.Upload(decryptedData, overwrite: true);  
-                        log.LogInformation($"File Decrypted Successfully {name}");     
+                        var passphraseSecretValue = await client.GetSecretAsync(privateKeyPassPhrase);
+                        string pphrase = passphraseSecretValue.Value.Value;
 
+                        BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(stagingContainer);
+                        BlobContainerClient outcontainerClient = DestblobServiceClient.GetBlobContainerClient(decryptContainer);
+
+                        bool containerExists = await outcontainerClient.ExistsAsync();
+
+                        if (!containerExists)
+                        {
+                            await outcontainerClient.CreateAsync();
+                            log.LogInformation("Container created successfully.");
+                        }
+                        else
+                        {
+                            log.LogInformation("Container already exists.");
+                        }
+                        
+                        BlobClient InblobClient = containerClient.GetBlobClient(name);
+                        BlobClient outblobClient = outcontainerClient.GetBlobClient(name);
+                        
+                        var propertiesResponse = InblobClient.GetProperties();
+                        var inputString = "";
+                    
+                        using (StreamReader reader = new StreamReader(myBlob))
+                        {
+                            inputString = reader.ReadToEnd();
+                        }
+
+                    
+
+                            if (IsEncrypted(inputString))
+                            {
+                                log.LogInformation("Validation for The file is encrypted is passed!");
+
+                                Stream inputStream = GenerateStreamFromString(inputString);
+
+                    
+                                byte[] privateKeyBytes = Convert.FromBase64String(keyContent);
+                                string privateKeyEncoded = Encoding.UTF8.GetString(privateKeyBytes);
+
+                                Stream decryptedData = await DecryptAsync(inputStream, privateKeyEncoded, pphrase, log);
+                                outblobClient.Upload(decryptedData, overwrite: true);  
+                                log.LogInformation($"File Decrypted Successfully {name}");     
+
+                            }
+                            else
+                                {
+                                    log.LogInformation("The file is not encrypted. Copying as it is to the destination folder.");
+
+                                    BlobDownloadInfo blobDownloadInfo = await InblobClient.DownloadAsync();
+
+                                    using (MemoryStream memoryStream = new MemoryStream())
+                                    {
+                                        await blobDownloadInfo.Content.CopyToAsync(memoryStream);
+                                        memoryStream.Position = 0;
+
+                                        await outblobClient.UploadAsync(memoryStream, true);
+                                    }
+                                }
+                            bool checkExists = await outblobClient.ExistsAsync();
+                            if(checkExists)
+                            {
+                                log.LogInformation("File Uploaded completed");
+                                await InblobClient.DeleteAsync();
+                                log.LogInformation("File Deleted Successfully from staging container");
+                            }
                     }
                     else
-                        {
-                            log.LogInformation("The file is not encrypted. Copying as it is to the destination folder.");
-
-                            BlobDownloadInfo blobDownloadInfo = await InblobClient.DownloadAsync();
-
-                            using (MemoryStream memoryStream = new MemoryStream())
-                            {
-                                await blobDownloadInfo.Content.CopyToAsync(memoryStream);
-                                memoryStream.Position = 0;
-
-                                await outblobClient.UploadAsync(memoryStream, true);
-                            }
-                        }
-                    bool checkExists = await outblobClient.ExistsAsync();
-                    if(checkExists)
                     {
-                        log.LogInformation("File Uploaded completed");
-                        await InblobClient.DeleteAsync();
-                        log.LogInformation("File Deleted Successfully from staging container");
-                    }
-               }
-               else
-               {
-                    log.LogError($"Input Stream data is empty Blob Data will not be processed {name}");
+                            log.LogError($"Input Stream data is empty Blob Data will not be processed {name}");
 
-               }
+                    }
+               
                 
             }
             catch (Exception ex)
